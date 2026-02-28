@@ -1,0 +1,33 @@
+# dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# environment variables
+.env
+.env.local
+.env.*.local
+
+# Bun
+bun.lockb
+
+# Cloudflare
+.wrangler/
+workers/redirect/.wrangler/
+node_modules/.cache/wrangler/
+
+# misc
+.DS_Store
+*.pem
+
+# debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+.claude/
