@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function proxy(request: NextRequest) {
+  const cookie = request.headers.get("cookie") ?? "";
   const res = await fetch(new URL("/api/auth/get-session", request.url), {
-    headers: { cookie: request.headers.get("cookie") ?? "" },
+    headers: { cookie },
   }).catch(() => null);
 
   if (!res || !res.ok) {
@@ -17,8 +18,7 @@ export async function proxy(request: NextRequest) {
 
   const checkRes = await fetch(new URL("/api/auth/check-admin", request.url), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: session.user.email }),
+    headers: { cookie },
   }).catch(() => null);
 
   if (!checkRes || !checkRes.ok) {

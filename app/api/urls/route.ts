@@ -1,13 +1,12 @@
-import { headers } from "next/headers";
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getAuthorizedUser } from "@/lib/guard";
 import { db } from "@/lib/db";
 import { urls, clicks } from "@/lib/schema";
 import { sql } from "drizzle-orm";
 
 export async function GET() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const user = await getAuthorizedUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const rows = await db
     .select({

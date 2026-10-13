@@ -1,18 +1,16 @@
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
-import { auth } from "@/lib/auth";
+import { getAuthorizedUser } from "@/lib/guard";
 import { db } from "@/lib/db";
-import { adminUsers, pushSubscriptions } from "@/lib/schema";
+import { pushSubscriptions } from "@/lib/schema";
 
 export async function PATCH(req: Request) {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user?.email) {
+  const me = await getAuthorizedUser();
+  if (!me) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [me] = await db.select().from(adminUsers).where(eq(adminUsers.email, session.user.email));
-  if (me?.role !== "superadmin") {
+  if (me.role !== "superadmin") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

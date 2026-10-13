@@ -1,5 +1,4 @@
 "use server";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "./db";
 import { urls, adminUsers } from "./schema";
@@ -7,13 +6,13 @@ import type { UserRole } from "./schema";
 import { eq } from "drizzle-orm";
 import { kvPut, kvDelete } from "./cloudflare";
 import { revalidatePath } from "next/cache";
-import { auth } from "./auth";
+import { getAuthorizedUser } from "./guard";
 import type { CreateUrlInput } from "./schemas";
 
-async function requireSession() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) redirect("/login");
-  return session;
+async function requireUser() {
+  const user = await getAuthorizedUser();
+  if (!user) redirect("/login");
+  return user;
 }
 
 function generateSlug(): string {
@@ -31,8 +30,8 @@ function appendUtmParams(destination: string, data: CreateUrlInput): string {
 }
 
 export async function createUrl(data: CreateUrlInput): Promise<{ slug: string }> {
-  const session = await requireSession();
-  const createdBy = session.user.email ?? null;
+  const user = await requireUser();
+  const createdBy = user.email;
 
   const destination = appendUtmParams(data.destination, data);
   const slug = data.slug?.trim() || generateSlug();
@@ -53,6 +52,7 @@ export async function createUrl(data: CreateUrlInput): Promise<{ slug: string }>
 }
 
 export async function deleteUrl(id: string) {
+  await requireUser();
   const [row] = await db.select({ slug: urls.slug }).from(urls).where(eq(urls.id, id));
   await db.delete(urls).where(eq(urls.id, id));
   if (row) await kvDelete(row.slug);
@@ -60,6 +60,7 @@ export async function deleteUrl(id: string) {
 }
 
 export async function updateUrl(id: string, data: CreateUrlInput): Promise<void> {
+  await requireUser();
   const destination = appendUtmParams(data.destination, data);
   const slug = data.slug?.trim() || generateSlug();
   const expiresAt = data.expires_at ? new Date(data.expires_at) : null;
@@ -78,48 +79,35 @@ export async function updateUrl(id: string, data: CreateUrlInput): Promise<void>
   revalidatePath("/admin");
 }
 
-async function getCurrentUserRole(email: string | undefined): Promise<UserRole | null> {
-  if (!email) return null;
-  const [u] = await db.select({ role: adminUsers.role }).from(adminUsers).where(eq(adminUsers.email, email));
-  return u?.role ?? null;
-}
-
 export async function addUser(email: string, role: UserRole = "user") {
-  const session = await requireSession();
-  const currentRole = await getCurrentUserRole(session.user.email ?? undefined);
-  if (!currentRole || currentRole === "user") throw new Error("Non autorizzato");
-  if (currentRole === "admin" && role !== "user") throw new Error("Gli admin possono creare solo utenti");
+  const me = await requireUser();
+  if (me.role === "user") throw new Error("Non autorizzato");
+  if (me.role === "admin" && role !== "user") throw new Error("Gli admin possono creare solo utenti");
   await db.insert(adminUsers).values({ email, active: true, role });
 }
 
 export async function toggleUser(email: string, active: boolean) {
-  const session = await requireSession();
-  const currentEmail = session.user.email ?? undefined;
-  if (currentEmail === email) throw new Error("Non puoi modificare il tuo stesso account");
-  const currentRole = await getCurrentUserRole(currentEmail);
-  if (!currentRole || currentRole === "user") throw new Error("Non autorizzato");
+  const me = await requireUser();
+  if (me.email === email) throw new Error("Non puoi modificare il tuo stesso account");
+  if (me.role === "user") throw new Error("Non autorizzato");
 
   const [target] = await db.select({ role: adminUsers.role }).from(adminUsers).where(eq(adminUsers.email, email));
   if (!target) throw new Error("Utente non trovato");
-  if (currentRole === "admin" && target.role !== "user") throw new Error("Non autorizzato");
+  if (me.role === "admin" && target.role !== "user") throw new Error("Non autorizzato");
 
   await db.update(adminUsers).set({ active }).where(eq(adminUsers.email, email));
 }
 
 export async function deleteUser(email: string) {
-  const session = await requireSession();
-  const currentEmail = session.user.email ?? undefined;
-  if (currentEmail === email) throw new Error("Non puoi eliminare il tuo stesso account");
-  const currentRole = await getCurrentUserRole(currentEmail);
-  if (currentRole !== "superadmin") throw new Error("Non autorizzato");
+  const me = await requireUser();
+  if (me.email === email) throw new Error("Non puoi eliminare il tuo stesso account");
+  if (me.role !== "superadmin") throw new Error("Non autorizzato");
   await db.delete(adminUsers).where(eq(adminUsers.email, email));
 }
 
 export async function changeUserRole(email: string, role: UserRole) {
-  const session = await requireSession();
-  const currentEmail = session.user.email ?? undefined;
-  if (currentEmail === email) throw new Error("Non puoi cambiare il tuo stesso ruolo");
-  const currentRole = await getCurrentUserRole(currentEmail);
-  if (currentRole !== "superadmin") throw new Error("Non autorizzato");
+  const me = await requireUser();
+  if (me.email === email) throw new Error("Non puoi cambiare il tuo stesso ruolo");
+  if (me.role !== "superadmin") throw new Error("Non autorizzato");
   await db.update(adminUsers).set({ role }).where(eq(adminUsers.email, email));
 }

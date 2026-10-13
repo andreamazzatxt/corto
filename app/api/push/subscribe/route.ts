@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
-import { auth } from "@/lib/auth";
+import { getAuthorizedUser } from "@/lib/guard";
 import { db } from "@/lib/db";
 import { pushSubscriptions } from "@/lib/schema";
 
 async function getEmail(): Promise<string | null> {
-  const session = await auth.api.getSession({ headers: await headers() });
-  return session?.user?.email ?? null;
+  return (await getAuthorizedUser())?.email ?? null;
 }
 
 export async function POST(req: Request) {
